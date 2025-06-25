@@ -240,10 +240,101 @@ docker-compose up -d --build
       * **目标:** 满足大型企业需求，引入AI能力。
       * **交付:** RBAC权限管理, 数据生命周期管理(ILM), AIOps智能异常检测。
 
-## 9\. 🤝 贡献指南 (Contributing)
+## 9\. 项目结构 (Contributing)
+
+```
+nexuslog/
+│
+├── .github/                      # CI/CD 与项目模板
+│   └── workflows/
+│       └── main.yml              # GitHub Actions CI/CD 配置文件 (自动化测试、构建、部署)
+│
+├── .env.example                  # 环境变量模板文件，用于指导配置
+├── .gitignore                    # Git忽略文件配置
+├── docker-compose.yml            # Docker Compose编排文件，用于一键启动本地开发环境
+├── Dockerfile                    # FastAPI应用主程序的Dockerfile
+├── README.md                     # 项目总纲文档 (我们刚刚完成的版本)
+├── requirements.txt              # Python项目依赖清单
+│
+└── src/                          # 核心源代码目录 (使用src布局以避免模块导入问题)
+    └── nexuslog_api/             # 主应用包
+        │
+        ├── api/                  # API路由层，负责定义所有HTTP端点
+        │   └── v1/               # API版本v1
+        │       ├── endpoints/    # 各个功能模块的端点定义
+        │       │   ├── alerts.py         # 告警规则的CRUD API
+        │       │   ├── dashboards.py     # 仪表盘配置的CRUD API
+        │       │   ├── ingestion.py      # 日志接收的核心端点 (/logs/bulk)
+        │       │   ├── projects.py       # 项目和API Key管理API
+        │       │   ├── search.py         # 日志查询API
+        │       │   └── users.py          # 用户注册、登录、信息管理API
+        │       │
+        │       └── v1_router.py  # 聚合所有v1版本的路由，统一入口
+        │
+        ├── core/                 # 项目核心配置与通用组件
+        │   ├── config.py         # 使用Pydantic读取和管理环境变量，提供全局配置
+        │   ├── db.py             # 数据库连接与会话管理 (PostgreSQL连接池)
+        │   └── security.py       # 安全相关：密码哈希、JWT Token生成与验证
+        │
+        ├── crud/                 # 数据库操作层 (Create, Read, Update, Delete)
+        │   ├── base.py           # 基础CRUD操作的基类 (可选)
+        │   ├── crud_alert.py     # 告警规则的数据库操作
+        │   ├── crud_project.py   # 项目的数据库操作
+        │   └── crud_user.py      # 用户的数据库操作
+        │
+        ├── models/               # 数据库模型层 (SQLAlchemy ORM Models)
+        │   ├── alert_rule.py     # 告警规则的数据表模型
+        │   ├── base.py           # SQLAlchemy的声明式基类
+        │   ├── project.py        # 项目的数据表模型
+        │   └── user.py           # 用户的数据表模型
+        │
+        ├── schemas/              # 数据校验层 (Pydantic Schemas)，定义API的输入输出格式
+        │   ├── alert.py          # 告警规则相关的Pydantic模型
+        │   ├── log.py            # 接收日志数据的Pydantic模型
+        │   ├── project.py        # 项目相关的Pydantic模型
+        │   ├── token.py          # JWT Token相关的Pydantic模型
+        │   └── user.py           # 用户相关的Pydantic模型 (如UserCreate, UserRead)
+        │
+        ├── services/             # 业务逻辑服务层，处理复杂业务逻辑
+        │   ├── alerting_service.py       # 执行告警规则检查的核心逻辑
+        │   ├── notification_service.py   # 发送邮件、Webhook通知的服务
+        │   └── onboarding_service.py     # 生成Agent安装脚本和配置文件的服务
+        │
+        ├── celery_app/           # Celery分布式任务相关模块
+        │   ├── tasks/            # 具体的Celery任务定义
+        │   │   ├── check_alerts.py     # 定时任务：周期性检查告警规则
+        │   │   ├── process_log.py      # 核心任务：解析日志并存入OpenSearch
+        │   │   └── send_notification.py# 异步任务：发送告警通知
+        │   │
+        │   └── worker.py         # Celery Worker的入口和配置
+        │
+        └── main.py               # FastAPI应用的主入口文件，创建App实例，挂载路由
+```
+
+### **结构说明**
+
+1.  **顶级目录:**
+
+      * `.github/`: 存放与GitHub平台相关的CI/CD配置。
+      * `src/`: 将所有应用代码放在`src`目录下，是一种现代Python项目的最佳实践，可以有效避免潜在的路径和模块导入问题。
+
+2.  **`src/nexuslog_api/` 核心应用包:**
+
+      * **`api/`**: 严格分离API路由定义，并按版本（`v1`）组织，便于未来API的升级和维护。
+      * **`core/`**: 存放与具体业务无关，但整个项目都依赖的核心组件，如配置加载、数据库连接。
+      * **`models/`**: 定义了数据在**数据库中**的形态（表结构）。
+      * **`schemas/`**: 定义了数据在**API接口**上的形态（请求体、响应体），使用Pydantic进行严格的数据校验。`models`和`schemas`的分离是FastAPI应用保持清晰边界的关键。
+      * **`crud/`**: 封装了所有直接与数据库交互的原子操作（增删改查），使业务逻辑层不必关心SQL细节。
+      * **`services/`**: 封装了更复杂的业务流程。例如，一个“创建用户”的服务可能会调用`crud.create_user`和`notification_service.send_welcome_email`。
+      * **`celery_app/`**: 将所有与Celery相关的代码集中管理，结构清晰。
+      * **`main.py`**: 保持主入口文件尽可能的简洁，只负责组装和启动。
+
+
+
+## 10\. 🤝 贡献指南 (Contributing)
 
 我们欢迎来自社区的任何贡献！如果您希望参与贡献，请参考 `CONTRIBUTING.md` 文件了解详细的流程和规范。
 
-## 10\. 📄 开源许可 (License)
+## 11\. 📄 开源许可 (License)
 
 本项目采用 [Apache 2.0 License](https://www.google.com/search?q=LICENSE) 开源许可。
