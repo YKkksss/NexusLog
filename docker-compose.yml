@@ -1,0 +1,44 @@
+version: '3'
+services:
+  # OpenSearch 服务本身
+  opensearch:
+    image: opensearchproject/opensearch:2.15.0 # 建议指定一个明确的版本
+    container_name: opensearch-node1
+    environment:
+      - discovery.type=single-node # 以单节点模式启动，最简单的配置
+      - bootstrap.memory_lock=true # 锁定内存，防止被交换到磁盘，提升性能
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m" # 分配JVM内存，根据机器性能调整
+      - "DISABLE_SECURITY_PLUGIN=true" # **重要：仅限本地开发！** 禁用安全插件，无需密码即可访问。
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - E:\Code\docker\volumn\OpenSearch:/usr/share/opensearch/data # 将数据持久化到Docker卷，防止容器重启后数据丢失
+    ports:
+      - "9200:9200" # API端口
+      - "9600:9600" # 性能分析端口
+    networks:
+      - nexuslog-net
+
+  # OpenSearch 可视化界面
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:2.15.0
+    container_name: opensearch-dashboards
+    ports:
+      - "5601:5601" # Web界面端口
+    environment:
+      OPENSEARCH_HOSTS: '["http://opensearch:9200"]' # 告诉Dashboards去哪里找OpenSearch服务
+      # **重要：仅限本地开发！** 禁用安全插件
+      DISABLE_SECURITY_PLUGIN: "true"
+    depends_on:
+      - opensearch # 确保在OpenSearch启动后再启动Dashboards
+    networks:
+      - nexuslog-net
+
+# volumes:
+#   opensearch-data: # 定义一个Docker卷来存储数据
+
+networks:
+  nexuslog-net: # 定义一个网络，让容器之间可以通过服务名通信
+    driver: bridge
